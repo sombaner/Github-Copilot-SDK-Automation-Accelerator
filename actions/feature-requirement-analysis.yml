@@ -1,0 +1,237 @@
+name: Feature Requirement Analysis
+
+on:
+  issues:
+    types: [labeled]
+
+# Cancel redundant runs for the same issue
+concurrency:
+  group: feature-req-analysis-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+# ──────────────────────────────────────────────────────────
+# Triggered when an issue receives the "gate-keeper" label.
+# Fetches the issue context and passes it to the council
+# for a thorough feature-requirement analysis including:
+#   - Detail sufficiency check against the codebase
+#   - Test scenario completeness
+#   - Missing information identification
+#   - Developer Readiness Score
+# ──────────────────────────────────────────────────────────
+
+jobs:
+  # ── Gate check & secret detection ────────────────────────────────────
+  # Validates the label trigger and checks whether the CAST Imaging
+  # API key is configured so the CAST analysis can run conditionally.
+  # ─────────────────────────────────────────────────────────────────────
+  gate-check:
+    if: github.event.label.name == 'gate-keeper'
+    runs-on: ubuntu-latest
+    outputs:
+      has_cast_key: ${{ steps.check.outputs.has_key }}
+    steps:
+      - name: Check for CAST Imaging API key
+        id: check
+        run: |
+          if [ -n "$CAST_KEY" ]; then
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+            echo "✅ CAST_IMAGING_API_KEY is configured — CAST analysis will run."
+          else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️  CAST_IMAGING_API_KEY not set — CAST analysis will be skipped."
+          fi
+        env:
+          CAST_KEY: ${{ secrets.CAST_IMAGING_API_KEY }}
+
+  # ── Council Analysis (runs in parallel) ──────────────────────────────
+  council-analysis:
+    needs: [gate-check]
+    uses: ./.github/workflows/council-query.yml
+    with:
+      query: |
+        FEATURE REQUIREMENT ANALYSIS
+
+        You are a senior technical product manager and engineering lead. An issue has been
+        filed describing a new feature or change request. Your task is to evaluate whether
+        the issue is detailed enough for a developer to pick up and start implementation
+        immediately, given the current state of the codebase.
+
+        ═══════════════════════════════════════════════
+        ISSUE CONTEXT
+        ═══════════════════════════════════════════════
+        **Issue #${{ github.event.issue.number }}:** ${{ github.event.issue.title }}
+
+        **Author:** @${{ github.event.issue.user.login }}
+
+        **Labels:** ${{ join(github.event.issue.labels.*.name, ', ') }}
+
+        **Body:**
+        ${{ github.event.issue.body }}
+        ═══════════════════════════════════════════════
+
+        Analyse the issue above against the full codebase and produce a structured report
+        covering the following areas:
+
+        ---
+
+        ## 1. Requirement Clarity Assessment
+        - Is the feature clearly defined with unambiguous acceptance criteria?
+        - Are there vague or open-ended statements that need refinement?
+        - Are edge cases and error scenarios explicitly addressed?
+        - Is the scope well-bounded, or could it lead to scope creep?
+
+        ## 2. Codebase Impact Analysis
+        - Which existing files, modules, and functions will need to be modified?
+        - Are there any architectural constraints or patterns in the codebase that
+          the issue should acknowledge?
+        - Are there dependencies or integration points the issue fails to mention?
+        - Does the issue conflict with any existing functionality?
+
+        ## 3. Test Scenario Completeness
+        - Does the issue describe or imply test scenarios? List them.
+        - Identify ALL test scenarios that should be covered, including:
+          - Happy path / success cases
+          - Validation and error cases (invalid input, missing fields, etc.)
+          - Edge cases and boundary conditions
+          - Integration/API contract tests
+          - Security-related test cases (if applicable)
+        - Flag any test scenarios that are MISSING from the issue description.
+
+        ## 4. Missing Information & Recommendations
+        - List specific pieces of information that are absent but necessary:
+          - API contract details (request/response formats, status codes)
+          - UI/UX specifications (if frontend changes are involved)
+          - Data model changes (new fields, migrations, storage impact)
+          - Configuration or environment variable changes
+          - Performance requirements or constraints
+          - Error handling and logging expectations
+          - Documentation updates needed
+        - For each missing item, provide a suggested description or question
+          the author should answer.
+
+        ## 5. Suggested Additions to the Issue
+        Provide ready-to-use content the issue author can paste into the issue to
+        make it complete. This should include:
+        - Refined acceptance criteria (if the originals are weak)
+        - A proposed implementation checklist
+        - Test case checklist
+        - Any architectural notes or constraints to be aware of
+
+        ## 6. Developer Readiness Score
+
+        Rate the issue on a **1–10 scale** across these dimensions and compute an
+        overall Developer Readiness Score:
+
+        | Dimension                    | Score (1-10) | Justification |
+        |------------------------------|--------------|---------------|
+        | Requirement Clarity          |              |               |
+        | Acceptance Criteria Quality  |              |               |
+        | Test Scenario Coverage       |              |               |
+        | Technical Detail Sufficiency |              |               |
+        | Scope Definition             |              |               |
+        | **Overall Readiness Score**  |              |               |
+
+        **Score interpretation:**
+        - **8-10:** Ready for development — developer can start immediately.
+        - **5-7:** Needs minor clarifications — developer can start with some assumptions.
+        - **1-4:** Not ready — significant gaps must be addressed before development begins.
+
+        ## 7. Final Verdict
+        State one of:
+        - ✅ **READY FOR DEVELOPMENT** — Issue is comprehensive and well-defined.
+        - ⚠️ **NEEDS REFINEMENT** — Issue requires the listed clarifications before work begins.
+        - ❌ **NOT READY** — Issue is too vague or incomplete for development.
+
+        Be precise, reference file paths and line numbers from the codebase, and do not
+        fabricate information.
+      artifact_name: feature-req-council-results
+    secrets: inherit
+
+  # ── CAST Feature Impact Analysis (runs in parallel, conditional) ─────
+  # Only runs when CAST_IMAGING_API_KEY is configured in repo secrets.
+  # ─────────────────────────────────────────────────────────────────────
+  cast-impact-analysis:
+    needs: [gate-check]
+    if: needs.gate-check.outputs.has_cast_key == 'true'
+    uses: ./.github/workflows/cast-feature-impact.yml
+    with:
+      feature_description: |
+        Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}
+
+        ${{ github.event.issue.body }}
+      application_name: ''
+      artifact_name: feature-req-cast-results
+    secrets: inherit
+
+  # ── Combine Results ──────────────────────────────────────────────────
+  # Merges council results and CAST impact analysis (if available) into
+  # a single artifact for downstream consumption by fetch-council-results.py.
+  # ─────────────────────────────────────────────────────────────────────
+  combine-results:
+    needs: [council-analysis, cast-impact-analysis, gate-check]
+    if: always() && needs.council-analysis.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download council results
+        uses: actions/download-artifact@v4
+        with:
+          name: feature-req-council-results
+          path: /tmp/council-results
+
+      - name: Download CAST results
+        if: needs.cast-impact-analysis.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: feature-req-cast-results
+          path: /tmp/cast-results
+
+      - name: Combine council and CAST results
+        run: |
+          python3 << 'COMBINE_EOF'
+          import json
+          import os
+
+          # Load council results
+          council_path = "/tmp/council-results/council-results.json"
+          with open(council_path) as f:
+              combined = json.load(f)
+
+          # Load CAST impact analysis if available
+          cast_md_path = "/tmp/cast-results/impact-analysis.md"
+          if os.path.exists(cast_md_path):
+              with open(cast_md_path) as f:
+                  cast_content = f.read().strip()
+              combined["cast_impact_analysis"] = cast_content
+              print(f"✅ CAST impact analysis included ({len(cast_content)} chars)")
+          else:
+              combined["cast_impact_analysis"] = None
+              print("ℹ️  No CAST impact analysis available (skipped or not configured)")
+
+          # Write combined results
+          os.makedirs("/tmp/combined-results", exist_ok=True)
+          output_path = "/tmp/combined-results/council-results.json"
+          with open(output_path, "w") as f:
+              json.dump(combined, f, indent=2)
+          print(f"Combined results written ({os.path.getsize(output_path)} bytes)")
+
+          # Copy over other council artifact files
+          for fname in ["step_summary.md", "chairman_response.txt"]:
+              src = f"/tmp/council-results/{fname}"
+              dst = f"/tmp/combined-results/{fname}"
+              if os.path.exists(src):
+                  with open(src) as s, open(dst, "w") as d:
+                      d.write(s.read())
+
+          # Also copy the CAST markdown report as a standalone file
+          if os.path.exists(cast_md_path):
+              dst = "/tmp/combined-results/cast-impact-analysis.md"
+              with open(cast_md_path) as s, open(dst, "w") as d:
+                  d.write(s.read())
+          COMBINE_EOF
+
+      - name: Upload combined results
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-requirement-analysis
+          path: /tmp/combined-results/
+          retention-days: 90

@@ -1,0 +1,494 @@
+name: Council Query
+
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: 'Your question about the codebase'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      query:
+        description: 'Your question about the codebase'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Name for the uploaded artifact'
+        required: false
+        type: string
+        default: 'council-results'
+    outputs:
+      chairman_response:
+        description: 'The chairman final synthesis response'
+        value: ${{ jobs.council.outputs.chairman_response }}
+
+jobs:
+  council:
+    runs-on: ubuntu-latest
+    outputs:
+      chairman_response: ${{ steps.capture_chairman.outputs.response }}
+    permissions:
+      contents: read
+
+    env:
+      COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Copilot CLI
+        run: |
+          curl -fsSL https://gh.io/copilot-install | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Copilot CLI
+        run: copilot --version
+
+      - name: Create copilot runner helper
+        run: |
+          # Helper script that pipes prompt to copilot via stdin,
+          # completely avoiding shell ARG_MAX limits.
+          # Uses copilot's documented script-piping pattern:
+          #   ./script-outputting-options.sh | copilot
+          # The prompt content flows through a pipe fd (no size limit)
+          # instead of through execve() arguments (2 MB limit).
+          #
+          # Usage: run_copilot <model> <prompt_file> <output_file>
+          cat > /tmp/run_copilot.sh << 'HELPER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          MODEL="$1"
+          PROMPT_FILE="$2"
+          OUTPUT_FILE="$3"
+
+          PROMPT_SIZE=$(wc -c < "$PROMPT_FILE")
+          echo "Sending ${PROMPT_SIZE} bytes to ${MODEL} via pipe..."
+
+          # Subshell outputs copilot CLI options and pipes to copilot stdin.
+          # This is the documented approach for programmatic use:
+          #   "you can use a script to output command-line options
+          #    and pipe this to copilot"
+          # The prompt content flows through the pipe, not through
+          # execve() args, so there is no ARG_MAX limit.
+          RESPONSE=$(
+            (
+              echo "--model"
+              echo "$MODEL"
+              echo "--allow-all-tools"
+              echo "-p"
+              cat "$PROMPT_FILE"
+            ) | copilot 2>&1
+          ) || true
+
+          echo "$RESPONSE" > "$OUTPUT_FILE"
+
+          RESP_SIZE=$(wc -c < "$OUTPUT_FILE")
+          echo "${MODEL} response collected (${RESP_SIZE} bytes)"
+          if [ "$RESP_SIZE" -lt 100 ]; then
+            echo "::warning::${MODEL} response seems too short — possible error"
+            cat "$OUTPUT_FILE"
+          fi
+          HELPER
+          chmod +x /tmp/run_copilot.sh
+          echo "Helper script created"
+
+      # ────────────────────────────────────────────────────
+      # Prepare codebase context snapshot (repo-agnostic)
+      # ────────────────────────────────────────────────────
+      - name: Prepare codebase context
+        run: |
+          MAX_BYTES=120000   # cap context to ~120 KB to stay within prompt limits
+
+          cat > /tmp/codebase-context.txt << 'CTX_HEADER'
+          === CODEBASE CONTEXT ===
+          Below is the source code from this repository.
+          Use ONLY this code to answer the question — do not fabricate information.
+          CTX_HEADER
+
+          echo "" >> /tmp/codebase-context.txt
+
+          # Repository tree
+          echo "--- REPOSITORY STRUCTURE ---" >> /tmp/codebase-context.txt
+          find . \
+            -not -path './.git/*' \
+            -not -path '*/__pycache__/*' \
+            -not -path '*/node_modules/*' \
+            -not -path '*/.venv/*' \
+            -not -path '*/dist/*' \
+            -not -path '*/build/*' \
+            -not -name '*.pyc' \
+            | sort | head -300 >> /tmp/codebase-context.txt
+          echo "" >> /tmp/codebase-context.txt
+
+          # Auto-discover and include source files (common code extensions)
+          echo "--- SOURCE FILES ---" >> /tmp/codebase-context.txt
+          find . -type f \
+            \( -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.jsx' -o -name '*.tsx' \
+               -o -name '*.go' -o -name '*.rs' -o -name '*.java' -o -name '*.cs' \
+               -o -name '*.rb' -o -name '*.php' -o -name '*.swift' -o -name '*.kt' \
+               -o -name '*.html' -o -name '*.css' -o -name '*.scss' \
+               -o -name '*.yml' -o -name '*.yaml' -o -name '*.toml' \
+               -o -name '*.json' -o -name '*.xml' \
+               -o -name '*.sh' -o -name '*.bash' \
+               -o -name '*.sql' -o -name '*.graphql' \
+               -o -name '*.tf' -o -name '*.bicep' \
+               -o -name 'Dockerfile' -o -name 'Makefile' \
+               -o -name '*.md' -o -name '*.txt' \) \
+            -not -path './.git/*' \
+            -not -path '*/__pycache__/*' \
+            -not -path '*/node_modules/*' \
+            -not -path '*/.venv/*' \
+            -not -path '*/dist/*' \
+            -not -path '*/build/*' \
+            -not -path '*/coverage*/*' \
+            -not -name 'package-lock.json' \
+            -not -name 'yarn.lock' \
+            -not -name 'pnpm-lock.yaml' \
+            -not -name '*.min.js' \
+            -not -name '*.min.css' \
+            -size -50k \
+            | sort | while read -r filepath; do
+              CURRENT_SIZE=$(wc -c < /tmp/codebase-context.txt)
+              if [ "$CURRENT_SIZE" -ge "$MAX_BYTES" ]; then
+                echo "" >> /tmp/codebase-context.txt
+                echo "--- CONTEXT TRUNCATED (${MAX_BYTES} byte limit reached) ---" >> /tmp/codebase-context.txt
+                break
+              fi
+              echo "--- FILE: $filepath ---" >> /tmp/codebase-context.txt
+              cat "$filepath" >> /tmp/codebase-context.txt 2>/dev/null || true
+              echo "" >> /tmp/codebase-context.txt
+          done
+
+          FINAL_SIZE=$(wc -c < /tmp/codebase-context.txt)
+          FILE_COUNT=$(grep -c '^--- FILE:' /tmp/codebase-context.txt || true)
+          echo "Codebase context prepared: ${FINAL_SIZE} bytes, ${FILE_COUNT} files"
+
+      # ────────────────────────────────────────────────────
+      # Helper: build a prompt file with system preamble + question + context
+      # ────────────────────────────────────────────────────
+      - name: Build Stage 1 prompt
+        env:
+          QUERY_TEXT: ${{ inputs.query }}
+        run: |
+          cat > /tmp/s1_prompt.txt << 'PROMPT'
+          You are a senior software engineer. Answer the following question using ONLY
+          the codebase context provided below. Be specific, reference file names and
+          line-level details where relevant. If the codebase does not contain enough
+          information, say so explicitly.
+          PROMPT
+
+          echo "" >> /tmp/s1_prompt.txt
+          printf 'QUESTION:\n%s\n' "$QUERY_TEXT" >> /tmp/s1_prompt.txt
+          echo "" >> /tmp/s1_prompt.txt
+          cat /tmp/codebase-context.txt >> /tmp/s1_prompt.txt
+
+          echo "Stage 1 prompt built ($(wc -c < /tmp/s1_prompt.txt) bytes)"
+
+      # ────────────────────────────────────────────────────
+      # STAGE 1 — Collect individual responses
+      # ────────────────────────────────────────────────────
+      - name: "Stage 1 · Query gpt-4.1"
+        id: s1_gpt41
+        run: /tmp/run_copilot.sh gpt-4.1 /tmp/s1_prompt.txt /tmp/s1_gpt41.txt
+
+      - name: "Stage 1 · Query claude-sonnet-4"
+        id: s1_claude
+        run: /tmp/run_copilot.sh claude-sonnet-4 /tmp/s1_prompt.txt /tmp/s1_claude.txt
+
+      - name: "Stage 1 · Query gpt-5-mini"
+        id: s1_gpt5mini
+        run: /tmp/run_copilot.sh gpt-5-mini /tmp/s1_prompt.txt /tmp/s1_gpt5mini.txt
+
+      # ────────────────────────────────────────────────────
+      # STAGE 2 — Peer ranking (each model ranks the others)
+      # ────────────────────────────────────────────────────
+      - name: Build ranking prompt
+        env:
+          QUERY_TEXT: ${{ inputs.query }}
+        run: |
+          cat > /tmp/ranking_prompt.txt << 'RANKING'
+          You are evaluating different responses to the following question:
+
+          RANKING
+
+          printf 'Question: %s\n' "$QUERY_TEXT" >> /tmp/ranking_prompt.txt
+          echo "" >> /tmp/ranking_prompt.txt
+          echo "Here are the responses from different models (anonymized):" >> /tmp/ranking_prompt.txt
+          echo "" >> /tmp/ranking_prompt.txt
+
+          echo "Response A:" >> /tmp/ranking_prompt.txt
+          cat /tmp/s1_gpt41.txt >> /tmp/ranking_prompt.txt
+          echo "" >> /tmp/ranking_prompt.txt
+
+          echo "Response B:" >> /tmp/ranking_prompt.txt
+          cat /tmp/s1_claude.txt >> /tmp/ranking_prompt.txt
+          echo "" >> /tmp/ranking_prompt.txt
+
+          echo "Response C:" >> /tmp/ranking_prompt.txt
+          cat /tmp/s1_gpt5mini.txt >> /tmp/ranking_prompt.txt
+          echo "" >> /tmp/ranking_prompt.txt
+
+          cat >> /tmp/ranking_prompt.txt << 'RANKING_INSTRUCTIONS'
+          Your task:
+          1. Evaluate each response individually — explain what it does well and poorly.
+          2. Provide a FINAL RANKING formatted EXACTLY as:
+
+          FINAL RANKING:
+          1. Response X
+          2. Response Y
+          3. Response Z
+
+          Do not add any other text after the ranking section.
+          RANKING_INSTRUCTIONS
+
+          echo "Ranking prompt built ($(wc -c < /tmp/ranking_prompt.txt) bytes)"
+
+      - name: "Stage 2 · Rank with gpt-4.1"
+        run: /tmp/run_copilot.sh gpt-4.1 /tmp/ranking_prompt.txt /tmp/s2_gpt41.txt
+
+      - name: "Stage 2 · Rank with claude-sonnet-4"
+        run: /tmp/run_copilot.sh claude-sonnet-4 /tmp/ranking_prompt.txt /tmp/s2_claude.txt
+
+      - name: "Stage 2 · Rank with gpt-5-mini"
+        run: /tmp/run_copilot.sh gpt-5-mini /tmp/ranking_prompt.txt /tmp/s2_gpt5mini.txt
+
+      # ────────────────────────────────────────────────────
+      # STAGE 3 — Chairman synthesis
+      # ────────────────────────────────────────────────────
+      - name: "Stage 3 · Chairman synthesis (gpt-4.1)"
+        env:
+          QUERY_TEXT: ${{ inputs.query }}
+        run: |
+          cat > /tmp/chairman_prompt.txt << 'CHAIRMAN'
+          You are the Chairman of the Gatekeeper Council. Multiple AI models have provided
+          responses to a user's codebase question, and then ranked each other's responses.
+
+          Synthesize a single, comprehensive, accurate answer that represents the council's
+          collective wisdom. Consider:
+          - The individual responses and their unique insights
+          - The peer rankings and which responses were most valued
+          - Patterns of agreement or disagreement
+          - Accuracy with respect to the codebase
+
+          Provide a clear, well-structured final answer. Reference specific files and code
+          where appropriate.
+          CHAIRMAN
+
+          echo "" >> /tmp/chairman_prompt.txt
+          printf 'ORIGINAL QUESTION:\n%s\n' "$QUERY_TEXT" >> /tmp/chairman_prompt.txt
+          echo "" >> /tmp/chairman_prompt.txt
+
+          echo "=== STAGE 1 — Individual Responses ===" >> /tmp/chairman_prompt.txt
+          echo "" >> /tmp/chairman_prompt.txt
+          echo "--- Model A (gpt-4.1) ---" >> /tmp/chairman_prompt.txt
+          cat /tmp/s1_gpt41.txt >> /tmp/chairman_prompt.txt
+          echo "" >> /tmp/chairman_prompt.txt
+          echo "--- Model B (claude-sonnet-4) ---" >> /tmp/chairman_prompt.txt
+          cat /tmp/s1_claude.txt >> /tmp/chairman_prompt.txt
+          echo "" >> /tmp/chairman_prompt.txt
+          echo "--- Model C (gpt-5-mini) ---" >> /tmp/chairman_prompt.txt
+          cat /tmp/s1_gpt5mini.txt >> /tmp/chairman_prompt.txt
+          echo "" >> /tmp/chairman_prompt.txt
+
+          echo "=== STAGE 2 — Peer Rankings ===" >> /tmp/chairman_prompt.txt
+          echo "" >> /tmp/chairman_prompt.txt
+          echo "--- gpt-4.1 ranking ---" >> /tmp/chairman_prompt.txt
+          cat /tmp/s2_gpt41.txt >> /tmp/chairman_prompt.txt
+          echo "" >> /tmp/chairman_prompt.txt
+          echo "--- claude-sonnet-4 ranking ---" >> /tmp/chairman_prompt.txt
+          cat /tmp/s2_claude.txt >> /tmp/chairman_prompt.txt
+          echo "" >> /tmp/chairman_prompt.txt
+          echo "--- gpt-5-mini ranking ---" >> /tmp/chairman_prompt.txt
+          cat /tmp/s2_gpt5mini.txt >> /tmp/chairman_prompt.txt
+          echo "" >> /tmp/chairman_prompt.txt
+
+          echo "Chairman prompt built ($(wc -c < /tmp/chairman_prompt.txt) bytes)"
+
+      - name: "Stage 3 · Run chairman model"
+        run: /tmp/run_copilot.sh gpt-4.1 /tmp/chairman_prompt.txt /tmp/s3_final.txt
+
+      - name: Capture chairman output
+        id: capture_chairman
+        if: always()
+        run: |
+          RESPONSE=$(cat /tmp/s3_final.txt 2>/dev/null || echo "Chairman synthesis unavailable.")
+          # GitHub Actions outputs support up to 1MB; truncate to be safe
+          TRUNCATED="${RESPONSE:0:900000}"
+          {
+            echo "response<<CHAIRMAN_EOF_DELIMITER"
+            echo "$TRUNCATED"
+            echo "CHAIRMAN_EOF_DELIMITER"
+          } >> "$GITHUB_OUTPUT"
+          echo "Chairman output captured (${#TRUNCATED} chars)"
+
+      # ────────────────────────────────────────────────────
+      # Compute aggregate rankings
+      # ────────────────────────────────────────────────────
+      - name: Compute aggregate rankings
+        id: rankings
+        run: |
+          python3 << 'PYEOF'
+          import re, json
+
+          models = {"Response A": "gpt-4.1", "Response B": "claude-sonnet-4", "Response C": "gpt-5-mini"}
+          rank_files = ["/tmp/s2_gpt41.txt", "/tmp/s2_claude.txt", "/tmp/s2_gpt5mini.txt"]
+
+          scores = {m: [] for m in models.values()}
+
+          for rf in rank_files:
+              try:
+                  text = open(rf).read()
+              except FileNotFoundError:
+                  continue
+
+              if "FINAL RANKING:" in text:
+                  section = text.split("FINAL RANKING:")[-1]
+                  matches = re.findall(r"(\d+)\.\s*(Response [A-C])", section)
+                  for pos, label in matches:
+                      if label in models:
+                          scores[models[label]].append(int(pos))
+
+          ranking = []
+          for model, positions in scores.items():
+              avg = round(sum(positions) / len(positions), 2) if positions else 999
+              ranking.append({"model": model, "avg_rank": avg, "votes": len(positions)})
+
+          ranking.sort(key=lambda x: x["avg_rank"])
+
+          with open("/tmp/aggregate_rankings.json", "w") as f:
+              json.dump(ranking, f, indent=2)
+
+          lines = ["| Model | Avg Rank | Votes |", "|-------|----------|-------|"]
+          for r in ranking:
+              lines.append(f"| {r['model']} | {r['avg_rank']} | {r['votes']} |")
+          open("/tmp/ranking_table.md", "w").write("\n".join(lines))
+
+          print("Aggregate rankings computed:")
+          print(json.dumps(ranking, indent=2))
+          PYEOF
+
+      # ────────────────────────────────────────────────────
+      # Publish step summary  (visible on the workflow run "Summary" tab)
+      # ────────────────────────────────────────────────────
+      - name: Publish summary
+        if: always()
+        env:
+          QUERY_TEXT: ${{ inputs.query }}
+        run: |
+          {
+            echo "# 🏛️ Gatekeeper Council Response"
+            echo ""
+            printf '> **Query:** %s\n' "$QUERY_TEXT"
+            echo ""
+
+            echo "---"
+            echo ""
+            echo "## 📝 Stage 3 — Chairman's Final Answer (gpt-4.1)"
+            echo ""
+            cat /tmp/s3_final.txt 2>/dev/null || echo "_Chairman synthesis unavailable._"
+            echo ""
+
+            echo "---"
+            echo ""
+            echo "## 📊 Aggregate Peer Rankings"
+            echo ""
+            cat /tmp/ranking_table.md 2>/dev/null || echo "_Rankings unavailable._"
+            echo ""
+
+            echo "---"
+            echo ""
+            echo "<details>"
+            echo "<summary>🔍 Stage 1 — Individual Model Responses</summary>"
+            echo ""
+            echo "### gpt-4.1"
+            echo ""
+            cat /tmp/s1_gpt41.txt 2>/dev/null || echo "_No response._"
+            echo ""
+            echo "### claude-sonnet-4"
+            echo ""
+            cat /tmp/s1_claude.txt 2>/dev/null || echo "_No response._"
+            echo ""
+            echo "### gpt-5-mini"
+            echo ""
+            cat /tmp/s1_gpt5mini.txt 2>/dev/null || echo "_No response._"
+            echo ""
+            echo "</details>"
+            echo ""
+
+            echo "<details>"
+            echo "<summary>⚖️ Stage 2 — Peer Rankings</summary>"
+            echo ""
+            echo "### gpt-4.1 ranking"
+            echo ""
+            cat /tmp/s2_gpt41.txt 2>/dev/null || echo "_No ranking._"
+            echo ""
+            echo "### claude-sonnet-4 ranking"
+            echo ""
+            cat /tmp/s2_claude.txt 2>/dev/null || echo "_No ranking._"
+            echo ""
+            echo "### gpt-5-mini ranking"
+            echo ""
+            cat /tmp/s2_gpt5mini.txt 2>/dev/null || echo "_No ranking._"
+            echo ""
+            echo "</details>"
+          } >> $GITHUB_STEP_SUMMARY
+
+          echo "✅ Council query complete — see Step Summary for results."
+
+      # ────────────────────────────────────────────────────
+      # Bundle all results as a downloadable JSON artifact
+      # ────────────────────────────────────────────────────
+      - name: Bundle council results as artifact
+        if: always()
+        run: |
+          mkdir -p /tmp/council-results
+
+          python3 << 'PYEOF'
+          import json, os
+
+          def read_file(path):
+              try:
+                  return open(path).read().strip()
+              except FileNotFoundError:
+                  return ""
+
+          results = {
+              "query": os.environ.get("INPUT_QUERY", ""),
+              "models": {
+                  "council": ["gpt-4.1", "claude-sonnet-4", "gpt-5-mini"],
+                  "chairman": "gpt-4.1"
+              },
+              "stage1": {
+                  "gpt-4.1": read_file("/tmp/s1_gpt41.txt"),
+                  "claude-sonnet-4": read_file("/tmp/s1_claude.txt"),
+                  "gpt-5-mini": read_file("/tmp/s1_gpt5mini.txt"),
+              },
+              "stage2": {
+                  "gpt-4.1": read_file("/tmp/s2_gpt41.txt"),
+                  "claude-sonnet-4": read_file("/tmp/s2_claude.txt"),
+                  "gpt-5-mini": read_file("/tmp/s2_gpt5mini.txt"),
+              },
+              "stage3": {
+                  "chairman_model": "gpt-4.1",
+                  "final_answer": read_file("/tmp/s3_final.txt"),
+              },
+              "aggregate_rankings": json.loads(read_file("/tmp/aggregate_rankings.json") or "[]"),
+          }
+
+          with open("/tmp/council-results/council-results.json", "w") as f:
+              json.dump(results, f, indent=2)
+
+          print(f"Council results JSON created ({os.path.getsize('/tmp/council-results/council-results.json')} bytes)")
+          PYEOF
+        env:
+          INPUT_QUERY: ${{ inputs.query }}
+
+      - name: Upload council results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name || 'council-results' }}
+          path: /tmp/council-results/
+          retention-days: 90

@@ -1,0 +1,375 @@
+name: CAST Feature Impact Analysis
+
+# ──────────────────────────────────────────────────────────────────────
+# Accepts a free-text feature description, connects to CAST Imaging
+# via its MCP server through the Copilot CLI Action, retrieves the
+# application architecture, and produces a complexity & impact
+# estimate powered by CAST Imaging data.
+# ──────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      feature_description:
+        description: 'Free-text description of the feature to analyse'
+        required: true
+        type: string
+      application_name:
+        description: 'CAST application name (leave empty to auto-discover from available apps)'
+        required: false
+        type: string
+        default: ''
+      artifact_name:
+        description: 'Custom artifact name (leave empty for default)'
+        required: false
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      feature_description:
+        description: 'Free-text description of the feature to analyse'
+        required: true
+        type: string
+      application_name:
+        description: 'CAST application name (leave empty to auto-discover)'
+        required: false
+        type: string
+        default: ''
+      artifact_name:
+        description: 'Custom artifact name (leave empty for default)'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: cast-feature-impact-${{ github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Step 1: Discover application (if not provided) ──────────────────
+  discover-app:
+    if: inputs.application_name == ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      app_name: ${{ steps.extract.outputs.app_name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Discover CAST Applications
+        id: discover
+        uses: austenstone/copilot-cli@v2.0
+        with:
+          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          allow-all-tools: true
+          model: claude-sonnet-4
+          upload-artifact: false
+          mcp-config: |
+            {
+              "mcpServers": {
+                "CASTImaging": {
+                  "type": "http",
+                  "url": "https://castimaging.io/imaging/mcp/",
+                  "headers": {
+                    "x-api-key": "${{ secrets.CAST_IMAGING_API_KEY }}"
+                  }
+                }
+              }
+            }
+          additional-directories: /tmp
+          prompt: |
+            You have access to CAST Imaging MCP tools. Your ONLY task is to discover
+            what applications are available.
+
+            1. Call the "all_applications" tool to list every application on the CAST server.
+            2. Print the FULL list of application names, one per line.
+            3. Then pick the application whose name best matches this repository:
+               Repository: ${{ github.repository }}
+
+            4. CRITICAL FINAL STEP: You MUST use the shell tool to write ONLY the selected
+               application name (nothing else) to the file /tmp/cast-app-name.txt
+               Example: echo "ticket_tracker" > /tmp/cast-app-name.txt
+
+            If you cannot determine the best match, use the first application name.
+
+      - name: Extract application name
+        id: extract
+        run: |
+          echo "Looking for /tmp/cast-app-name.txt..."
+          if [ -f /tmp/cast-app-name.txt ]; then
+            APP_NAME=$(cat /tmp/cast-app-name.txt | tr -d '\n' | xargs)
+            echo "✅ Found app name from Copilot: $APP_NAME"
+          else
+            echo "⚠️ /tmp/cast-app-name.txt not found"
+            # Fallback: try to parse from logs
+            LOGS_PATH="${{ steps.discover.outputs.logs-path }}"
+            if [ -d "$LOGS_PATH" ]; then
+              echo "Checking logs at: $LOGS_PATH"
+              APP_NAME=$(grep -rhoP '(?<=SELECTED_APP=)\S+' "$LOGS_PATH" 2>/dev/null | tail -1 | xargs)
+            fi
+          fi
+
+          if [ -z "$APP_NAME" ]; then
+            echo "⚠️ Could not auto-discover application, using repo name as fallback."
+            APP_NAME=$(echo "${{ github.repository }}" | awk -F'/' '{print $2}')
+          fi
+
+          echo "Discovered application: $APP_NAME"
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+
+  # ── Step 2: Run impact analysis ─────────────────────────────────────
+  feature-impact-analysis:
+    needs: [discover-app]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve application name
+        id: app
+        run: |
+          if [ -n "${{ inputs.application_name }}" ]; then
+            APP_NAME="${{ inputs.application_name }}"
+          elif [ -n "${{ needs.discover-app.outputs.app_name }}" ]; then
+            APP_NAME="${{ needs.discover-app.outputs.app_name }}"
+          else
+            APP_NAME=$(echo "${{ github.repository }}" | awk -F'/' '{print $2}')
+          fi
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+          echo "Using application: $APP_NAME"
+
+      - name: CAST Architecture & Impact Analysis
+        id: analysis
+        uses: austenstone/copilot-cli@v2.0
+        with:
+          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          allow-all-tools: true
+          model: claude-sonnet-4
+          upload-artifact: false
+          additional-directories: /tmp
+          mcp-config: |
+            {
+              "mcpServers": {
+                "CASTImaging": {
+                  "type": "http",
+                  "url": "https://castimaging.io/imaging/mcp/",
+                  "headers": {
+                    "x-api-key": "${{ secrets.CAST_IMAGING_API_KEY }}"
+                  }
+                }
+              }
+            }
+          prompt: |
+            You are a senior software architect performing a **Feature Impact & Complexity
+            Analysis** using CAST Imaging. You MUST use the CAST Imaging MCP tools to
+            retrieve real data — do NOT fabricate any architecture details.
+
+            ═══════════════════════════════════════════════
+            FEATURE TO ANALYSE
+            ═══════════════════════════════════════════════
+            ${{ inputs.feature_description }}
+
+            ═══════════════════════════════════════════════
+            TARGET APPLICATION
+            ═══════════════════════════════════════════════
+            ${{ steps.app.outputs.app_name }}
+
+            ═══════════════════════════════════════════════
+            ANALYSIS INSTRUCTIONS  (follow every step)
+            ═══════════════════════════════════════════════
+
+            **STEP 1 — Application Overview**
+            • Call `stats` for the target application to get size metrics
+              (lines of code, number of objects, technologies, etc.).
+            • Call `architectural_graph` with mode="nodes" and level="component"
+              to understand the high-level architecture layers and components.
+            • Call `architectural_graph` with mode="links" and level="component"
+              to understand component-to-component dependencies.
+
+            **STEP 2 — Transaction & Data Flow Discovery**
+            • Call `transactions` for the application (first page) to identify
+              existing API / UI endpoints.
+            • Call `data_graphs` for the application (first page) to identify
+              data entity interaction networks.
+            • If the feature description mentions specific keywords (e.g. "ticket",
+              "user", "order"), use the `filters` parameter to narrow results:
+              `"name:contains:<keyword>"`.
+
+            **STEP 3 — Deep-dive into Affected Transactions**
+            • For the 2-3 transactions most relevant to the feature, call
+              `transaction_details` with focus="type_graph" to understand
+              object-type distribution in the call graph.
+            • Then call `transaction_details` with focus="complexity" to get
+              the most complex objects in those transactions.
+
+            **STEP 4 — Object-Level Impact**
+            • Use `objects` with filters matching keywords from the feature
+              description (e.g. `"name:contains:ticket,type:contains:class"`)
+              to find directly affected code elements.
+            • For the most relevant objects found, call `object_details` with
+              focus="inward" (callers) and focus="outward" (callees) to map
+              the blast radius.
+            • Call `object_details` with focus="testing" on 1-2 key objects
+              to understand existing test exposure.
+
+            **STEP 5 — Quality & Risk Assessment**
+            • Call `quality_insights` with nature="structural-flaws" to check
+              for existing structural issues in the application.
+            • Call `quality_insights` with nature="iso-5055" to check for
+              ISO 5055 compliance issues.
+            • Call `packages` to review third-party dependencies that might
+              be affected.
+
+            **STEP 6 — Inter-Application Dependencies** (if applicable)
+            • Call `inter_applications_dependencies` to check whether the
+              feature could ripple into other applications.
+
+            ═══════════════════════════════════════════════
+            OUTPUT FORMAT  (produce this EXACTLY)
+            ═══════════════════════════════════════════════
+
+            # 🏗️ CAST Feature Impact Analysis Report
+
+            ## 1. Application Overview
+            | Metric | Value |
+            |--------|-------|
+            | Application Name | |
+            | Lines of Code | |
+            | Total Objects | |
+            | Technologies | |
+            | Transactions (API/UI) | |
+            | Data Graphs | |
+
+            ## 2. Architecture Summary
+            Describe the high-level component architecture and the main
+            dependency flows relevant to the feature.
+
+            ## 3. Affected Components & Transactions
+            List every component, transaction, and data graph that will
+            likely be touched by the feature. For each, state:
+            - What it does today
+            - How the feature changes it
+            - Downstream dependencies at risk
+
+            ## 4. Blast Radius (Object-Level)
+            - **Directly affected objects** — objects that must be created or modified.
+            - **Indirectly affected objects** — callers / callees of direct objects.
+            - **Test exposure** — existing API/UI endpoints exercising those objects.
+
+            Present this as a table:
+            | Object | Type | Direct/Indirect | Callers | Callees | Test Coverage |
+            |--------|------|-----------------|---------|---------|---------------|
+
+            ## 5. Quality & Risk Flags
+            Summarise any pre-existing structural flaws, ISO 5055 violations,
+            or CVE-affected packages in the affected area. Flag risks the
+            feature might inherit or worsen.
+
+            ## 6. Inter-Application Impact
+            Note any cross-application dependencies that may be affected.
+            If none, state "No inter-application impact detected."
+
+            ## 7. Complexity Estimate
+
+            Rate each dimension on a **1–5 scale** (1 = trivial, 5 = very complex):
+
+            | Dimension | Score | Rationale |
+            |-----------|-------|-----------|
+            | Architectural Complexity | | How many layers / components touched |
+            | Data Model Complexity | | Number of data entities and data graphs affected |
+            | Transaction Complexity | | Avg complexity of affected transactions |
+            | Integration Complexity | | Cross-component & cross-app dependencies |
+            | Quality Risk | | Pre-existing issues that raise risk |
+            | **Overall Complexity** | **(weighted avg)** | |
+
+            ## 8. Effort Estimation
+
+            | Category | Estimate |
+            |----------|----------|
+            | T-Shirt Size | XS / S / M / L / XL |
+            | Estimated Story Points | |
+            | Estimated Dev Days (1 developer) | |
+            | Recommended Team Size | |
+            | Key Risks & Mitigations | |
+
+            ## 9. Recommendations
+            - Implementation approach (top-down vs bottom-up)
+            - Suggested order of changes
+            - Testing strategy for affected transactions
+            - Any refactoring advisable before starting
+
+            ---
+            *Report generated from CAST Imaging data. All metrics are based
+            on static analysis of the application architecture.*
+
+            CRITICAL FINAL STEP: After producing the full report above, you MUST use the
+            shell tool to write the ENTIRE report (from "# 🏗️ CAST Feature Impact Analysis Report"
+            to the end) to the file /tmp/cast-analysis/impact-analysis.md
+            First create the directory: mkdir -p /tmp/cast-analysis
+            Then write the report using a heredoc or echo commands.
+
+      # ── Save analysis output ──
+      - name: Save Analysis Output
+        if: always()
+        run: |
+          mkdir -p /tmp/cast-analysis
+          if [ -f /tmp/cast-analysis/impact-analysis.md ] && [ -s /tmp/cast-analysis/impact-analysis.md ]; then
+            echo "✅ Report written by Copilot: $(wc -c < /tmp/cast-analysis/impact-analysis.md) bytes"
+          else
+            echo "⚠️ Copilot didn't write the report file. Extracting from logs..."
+            LOGS_PATH="${{ steps.analysis.outputs.logs-path }}"
+            if [ -d "$LOGS_PATH" ]; then
+              echo "Searching logs at: $LOGS_PATH"
+              ls -la "$LOGS_PATH"
+              # Concatenate all log content and extract the markdown report
+              cat "$LOGS_PATH"/* 2>/dev/null | \
+                sed -n '/^# 🏗️ CAST Feature Impact Analysis Report/,/^\*Report generated from CAST Imaging data/p' \
+                > /tmp/cast-analysis/impact-analysis.md 2>/dev/null || true
+            fi
+            # Final fallback
+            if [ ! -s /tmp/cast-analysis/impact-analysis.md ]; then
+              echo "⚠️ Could not extract report. Check workflow run logs for full output." \
+                > /tmp/cast-analysis/impact-analysis.md
+            fi
+          fi
+
+      # ── Write GitHub Actions step summary ──
+      - name: Write Step Summary
+        if: always()
+        run: |
+          SUMMARY_FILE="${GITHUB_STEP_SUMMARY}"
+
+          cat >> "$SUMMARY_FILE" << 'HEADER'
+          # 🏗️ CAST Feature Impact Analysis
+
+          HEADER
+
+          echo "**Application:** \`${{ steps.app.outputs.app_name }}\`" >> "$SUMMARY_FILE"
+          echo "**Feature:** ${{ inputs.feature_description }}" >> "$SUMMARY_FILE"
+          echo "**Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "---" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+
+          if [ -f /tmp/cast-analysis/impact-analysis.md ]; then
+            cat /tmp/cast-analysis/impact-analysis.md >> "$SUMMARY_FILE"
+          else
+            echo "⚠️ Analysis output not found." >> "$SUMMARY_FILE"
+          fi
+
+      # ── Upload analysis artifact ──
+      - name: Upload Analysis Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name || format('cast-feature-impact-analysis-{0}-{1}', github.run_id, github.run_attempt) }}
+          path: /tmp/cast-analysis/
+          retention-days: 90
+          overwrite: true
