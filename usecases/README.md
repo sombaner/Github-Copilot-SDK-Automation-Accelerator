@@ -9,6 +9,7 @@ This directory contains use-case-specific Copilot SDK agents organized by domain
 | [monitoring/](monitoring/) | AKS cluster health monitoring, diagnostics, GitHub issue creation | Node.js |
 | [code-review/](code-review/) | AI-powered code review with custom analysis | Node.js |
 | [security-analysis/](security-analysis/) | Automated security vulnerability scanning | Node.js |
+| [ppt-generator/](ppt-generator/) | AI-powered PowerPoint presentation generator with custom tools & agent skills | Node.js, Python |
 
 ## Structure
 

@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "EVENT_TYPE=SessionStart python3 .github/hooks/scripts/governance-scanner.py",
+        "timeout": 10
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "EVENT_TYPE=UserPromptSubmit python3 .github/hooks/scripts/governance-scanner.py",
+        "timeout": 15
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "EVENT_TYPE=PreToolUse python3 .github/hooks/scripts/governance-scanner.py",
+        "timeout": 15
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "EVENT_TYPE=PostToolUse python3 .github/hooks/scripts/governance-scanner.py",
+        "timeout": 15
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "EVENT_TYPE=Stop python3 .github/hooks/scripts/governance-scanner.py",
+        "timeout": 15
+      }
+    ]
+  }
+}

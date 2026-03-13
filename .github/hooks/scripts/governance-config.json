@@ -1,0 +1,109 @@
+{
+  "governanceLevel": "standard",
+  "levels": {
+    "open": {
+      "description": "Audit-only mode. All events are logged but nothing is blocked.",
+      "highSeverity": "audit",
+      "mediumSeverity": "audit",
+      "lowSeverity": "audit"
+    },
+    "standard": {
+      "description": "Block high-severity threats, warn on medium, audit low.",
+      "highSeverity": "deny",
+      "mediumSeverity": "ask",
+      "lowSeverity": "audit"
+    },
+    "strict": {
+      "description": "Block high and medium threats, warn on low.",
+      "highSeverity": "deny",
+      "mediumSeverity": "deny",
+      "lowSeverity": "ask"
+    },
+    "locked": {
+      "description": "Block all detected threats. Maximum enforcement.",
+      "highSeverity": "deny",
+      "mediumSeverity": "deny",
+      "lowSeverity": "deny"
+    }
+  },
+  "threatCategories": {
+    "sensitive_data_exposure": {
+      "description": "Detects credit card numbers, SSNs, Aadhaar numbers, passwords, and other PII in prompts and code.",
+      "severity": "high",
+      "subcategories": [
+        "credit_card",
+        "ssn",
+        "aadhaar",
+        "password_literal",
+        "email_with_password",
+        "phone_number"
+      ]
+    },
+    "credential_exposure": {
+      "description": "Detects hardcoded API keys, tokens, connection strings, and secrets.",
+      "severity": "high",
+      "subcategories": [
+        "api_key",
+        "bearer_token",
+        "aws_key",
+        "azure_key",
+        "gcp_key",
+        "private_key",
+        "connection_string",
+        "jwt_token",
+        "github_token",
+        "generic_secret"
+      ]
+    },
+    "data_exfiltration": {
+      "description": "Detects attempts to send data to external endpoints or encode/upload sensitive content.",
+      "severity": "high",
+      "subcategories": [
+        "curl_post_sensitive",
+        "wget_upload",
+        "base64_encode_sensitive",
+        "external_endpoint",
+        "dns_exfil"
+      ]
+    },
+    "privilege_escalation": {
+      "description": "Detects commands that elevate privileges or modify access controls.",
+      "severity": "medium",
+      "subcategories": [
+        "sudo_usage",
+        "chmod_dangerous",
+        "chown_root",
+        "setuid",
+        "docker_privileged"
+      ]
+    },
+    "system_destruction": {
+      "description": "Detects destructive commands that could damage systems or data.",
+      "severity": "high",
+      "subcategories": [
+        "rm_recursive_force",
+        "format_disk",
+        "drop_database",
+        "truncate_table",
+        "kill_all",
+        "dd_write"
+      ]
+    },
+    "prompt_injection": {
+      "description": "Detects prompt injection attempts that try to override agent behavior.",
+      "severity": "medium",
+      "subcategories": [
+        "ignore_instructions",
+        "override_system",
+        "jailbreak",
+        "role_override",
+        "instruction_leak"
+      ]
+    }
+  },
+  "auditLog": {
+    "path": ".github/hooks/audit/governance-audit.jsonl",
+    "maxSizeMB": 50,
+    "rotateOnSessionStart": false
+  }
+}

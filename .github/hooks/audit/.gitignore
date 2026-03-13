@@ -1,0 +1,3 @@
+# Governance audit logs (generated at runtime, contain sensitive redacted data)
+*.jsonl
+session-summary.json
