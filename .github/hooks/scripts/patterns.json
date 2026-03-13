@@ -1,0 +1,263 @@
+{
+  "sensitive_data_exposure": {
+    "credit_card": {
+      "patterns": [
+        "\\b4[0-9]{3}[\\s-]?[0-9]{4}[\\s-]?[0-9]{4}[\\s-]?[0-9]{4}\\b",
+        "\\b5[1-5][0-9]{2}[\\s-]?[0-9]{4}[\\s-]?[0-9]{4}[\\s-]?[0-9]{4}\\b",
+        "\\b3[47][0-9]{2}[\\s-]?[0-9]{6}[\\s-]?[0-9]{5}\\b",
+        "\\b6(?:011|5[0-9]{2})[\\s-]?[0-9]{4}[\\s-]?[0-9]{4}[\\s-]?[0-9]{4}\\b"
+      ],
+      "description": "Credit card numbers (Visa, MasterCard, Amex, Discover)",
+      "severity": "high"
+    },
+    "ssn": {
+      "patterns": [
+        "\\b[0-9]{3}[\\s-][0-9]{2}[\\s-][0-9]{4}\\b"
+      ],
+      "description": "US Social Security Numbers (XXX-XX-XXXX)",
+      "severity": "high",
+      "contextHints": ["ssn", "social security", "social-security", "tax id", "taxpayer"]
+    },
+    "aadhaar": {
+      "patterns": [
+        "\\b[2-9][0-9]{3}[\\s-]?[0-9]{4}[\\s-]?[0-9]{4}\\b"
+      ],
+      "description": "Indian Aadhaar card numbers (XXXX XXXX XXXX)",
+      "severity": "high",
+      "contextHints": ["aadhaar", "aadhar", "uid", "uidai", "unique identification"]
+    },
+    "password_literal": {
+      "patterns": [
+        "(?i)(password|passwd|pwd|pass)\\s*[:=]\\s*['\"][^'\"]{4,}['\"]",
+        "(?i)(password|passwd|pwd|pass)\\s*[:=]\\s*\\S{4,}"
+      ],
+      "description": "Hardcoded password values",
+      "severity": "high"
+    },
+    "email_with_password": {
+      "patterns": [
+        "(?i)[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}\\s*[:|\\/]\\s*\\S{4,}"
+      ],
+      "description": "Email and password combinations",
+      "severity": "high"
+    }
+  },
+  "credential_exposure": {
+    "api_key": {
+      "patterns": [
+        "(?i)(api[_-]?key|apikey)\\s*[:=]\\s*['\"]?[A-Za-z0-9_\\-]{20,}['\"]?",
+        "(?i)(x-api-key|api-key)\\s*[:=]\\s*['\"]?[A-Za-z0-9_\\-]{16,}['\"]?"
+      ],
+      "description": "Generic API key patterns",
+      "severity": "high"
+    },
+    "bearer_token": {
+      "patterns": [
+        "(?i)bearer\\s+[A-Za-z0-9_\\-\\.]{20,}",
+        "(?i)authorization\\s*[:=]\\s*['\"]?bearer\\s+[A-Za-z0-9_\\-\\.]{20,}"
+      ],
+      "description": "Bearer tokens in authorization headers",
+      "severity": "high"
+    },
+    "aws_key": {
+      "patterns": [
+        "(?i)AKIA[0-9A-Z]{16}",
+        "(?i)(aws_secret_access_key|aws_access_key_id)\\s*[:=]\\s*['\"]?[A-Za-z0-9/+=]{20,}['\"]?"
+      ],
+      "description": "AWS access keys and secret keys",
+      "severity": "high"
+    },
+    "azure_key": {
+      "patterns": [
+        "(?i)(azure[_-]?(storage|account|subscription|tenant|client)[_-]?(key|secret|id))\\s*[:=]\\s*['\"]?[A-Za-z0-9+/=]{20,}['\"]?",
+        "(?i)DefaultEndpointsProtocol=https?;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]+"
+      ],
+      "description": "Azure storage keys, connection strings, and service credentials",
+      "severity": "high"
+    },
+    "gcp_key": {
+      "patterns": [
+        "(?i)(google[_-]?(api[_-]?key|cloud[_-]?key|service[_-]?account))\\s*[:=]\\s*['\"]?[A-Za-z0-9_\\-]{20,}['\"]?",
+        "(?i)\"type\"\\s*:\\s*\"service_account\""
+      ],
+      "description": "GCP API keys and service account indicators",
+      "severity": "high"
+    },
+    "private_key": {
+      "patterns": [
+        "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+        "-----BEGIN PGP PRIVATE KEY BLOCK-----"
+      ],
+      "description": "Private key file content (RSA, EC, DSA, PGP, OpenSSH)",
+      "severity": "high"
+    },
+    "connection_string": {
+      "patterns": [
+        "(?i)(server|data source)\\s*=\\s*[^;]+;.*(password|pwd)\\s*=\\s*[^;]+",
+        "(?i)mongodb(\\+srv)?:\\/\\/[^:]+:[^@]+@",
+        "(?i)postgres(ql)?:\\/\\/[^:]+:[^@]+@",
+        "(?i)mysql:\\/\\/[^:]+:[^@]+@",
+        "(?i)redis:\\/\\/:[^@]+@"
+      ],
+      "description": "Database connection strings with embedded credentials",
+      "severity": "high"
+    },
+    "jwt_token": {
+      "patterns": [
+        "eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]+"
+      ],
+      "description": "JSON Web Tokens",
+      "severity": "medium"
+    },
+    "github_token": {
+      "patterns": [
+        "gh[pousr]_[A-Za-z0-9_]{36,}",
+        "github_pat_[A-Za-z0-9_]{22,}"
+      ],
+      "description": "GitHub personal access tokens and OAuth tokens",
+      "severity": "high"
+    },
+    "generic_secret": {
+      "patterns": [
+        "(?i)(secret|token|key|credential|auth)\\s*[:=]\\s*['\"]?[A-Za-z0-9_\\-\\.+/=]{20,}['\"]?"
+      ],
+      "description": "Generic secret/token/key patterns",
+      "severity": "medium"
+    }
+  },
+  "data_exfiltration": {
+    "curl_post_sensitive": {
+      "patterns": [
+        "(?i)curl\\s+.*-X\\s*POST.*(-d|--data)\\s+.*(@|\\$|password|secret|key|token)",
+        "(?i)curl\\s+.*(-d|--data)\\s+.*(-X\\s*POST|https?://)"
+      ],
+      "description": "curl POST requests potentially exfiltrating data",
+      "severity": "high"
+    },
+    "wget_upload": {
+      "patterns": [
+        "(?i)wget\\s+.*--post-(data|file)\\s+",
+        "(?i)wget\\s+.*--method\\s*=\\s*POST"
+      ],
+      "description": "wget upload/POST operations",
+      "severity": "high"
+    },
+    "base64_encode_sensitive": {
+      "patterns": [
+        "(?i)base64\\s+(-e|--encode)\\s+.*(password|secret|key|token|credential)",
+        "(?i)(password|secret|key|token).*\\|\\s*base64"
+      ],
+      "description": "Base64 encoding of sensitive data",
+      "severity": "high"
+    },
+    "external_endpoint": {
+      "patterns": [
+        "(?i)(curl|wget|fetch|http\\.get|requests\\.(post|put|patch))\\s+.*\\.(ngrok|pipedream|requestbin|webhook\\.site|burp)",
+        "(?i)(curl|wget)\\s+.*https?://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+"
+      ],
+      "description": "Requests to suspicious external endpoints or raw IPs",
+      "severity": "high"
+    }
+  },
+  "privilege_escalation": {
+    "sudo_usage": {
+      "patterns": [
+        "(?i)\\bsudo\\s+(chmod|chown|rm|mv|cp|dd|mkfs|mount|usermod|groupmod|visudo|passwd|adduser|useradd)"
+      ],
+      "description": "sudo with dangerous commands",
+      "severity": "medium"
+    },
+    "chmod_dangerous": {
+      "patterns": [
+        "(?i)chmod\\s+(777|666|a\\+[rwx]|o\\+w)\\s+",
+        "(?i)chmod\\s+\\+s\\s+"
+      ],
+      "description": "Overly permissive chmod or setuid bit",
+      "severity": "medium"
+    },
+    "chown_root": {
+      "patterns": [
+        "(?i)chown\\s+(root|0)[:.]"
+      ],
+      "description": "Changing file ownership to root",
+      "severity": "medium"
+    },
+    "docker_privileged": {
+      "patterns": [
+        "(?i)docker\\s+run\\s+.*--privileged",
+        "(?i)docker\\s+run\\s+.*--cap-add\\s+(ALL|SYS_ADMIN|NET_ADMIN)"
+      ],
+      "description": "Running Docker containers in privileged mode",
+      "severity": "medium"
+    }
+  },
+  "system_destruction": {
+    "rm_recursive_force": {
+      "patterns": [
+        "(?i)\\brm\\s+-(r|R)?f\\s+(/|~|\\$HOME|\\$\\(|\\*)",
+        "(?i)\\brm\\s+-rf\\s+/(?!tmp/)",
+        "(?i)\\brm\\s+-rf\\s+\\."
+      ],
+      "description": "Recursive force delete on critical paths",
+      "severity": "high"
+    },
+    "format_disk": {
+      "patterns": [
+        "(?i)\\b(mkfs|format)\\s+",
+        "(?i)\\bfdisk\\s+/dev/"
+      ],
+      "description": "Disk formatting commands",
+      "severity": "high"
+    },
+    "drop_database": {
+      "patterns": [
+        "(?i)\\bDROP\\s+(DATABASE|SCHEMA|TABLE|INDEX)\\s+",
+        "(?i)\\bTRUNCATE\\s+TABLE\\s+"
+      ],
+      "description": "Destructive SQL operations",
+      "severity": "high"
+    },
+    "dd_write": {
+      "patterns": [
+        "(?i)\\bdd\\s+.*of=/dev/"
+      ],
+      "description": "dd writing to block devices",
+      "severity": "high"
+    }
+  },
+  "prompt_injection": {
+    "ignore_instructions": {
+      "patterns": [
+        "(?i)ignore\\s+(all\\s+)?(previous|prior|above|earlier)\\s+(instructions|prompts|rules|guidelines)",
+        "(?i)disregard\\s+(all\\s+)?(previous|prior|above)\\s+(instructions|prompts|rules)"
+      ],
+      "description": "Attempts to override previous instructions",
+      "severity": "medium"
+    },
+    "override_system": {
+      "patterns": [
+        "(?i)you\\s+are\\s+now\\s+(a|an|in)\\s+",
+        "(?i)new\\s+(system\\s+)?prompt\\s*:",
+        "(?i)system\\s*:\\s*you\\s+are"
+      ],
+      "description": "Attempts to override system prompt or role",
+      "severity": "medium"
+    },
+    "jailbreak": {
+      "patterns": [
+        "(?i)(DAN|do\\s+anything\\s+now|developer\\s+mode|jailbreak|bypass\\s+filter)",
+        "(?i)pretend\\s+(you\\s+)?(are|have)\\s+no\\s+(restrictions|limits|rules|filters)"
+      ],
+      "description": "Known jailbreak patterns",
+      "severity": "medium"
+    },
+    "instruction_leak": {
+      "patterns": [
+        "(?i)(show|reveal|print|output|display|tell\\s+me)\\s+(your|the)\\s+(system\\s+)?(prompt|instructions|rules|configuration)",
+        "(?i)what\\s+(are|is)\\s+(your|the)\\s+(system\\s+)?(prompt|instructions)"
+      ],
+      "description": "Attempts to leak system instructions",
+      "severity": "medium"
+    }
+  }
+}

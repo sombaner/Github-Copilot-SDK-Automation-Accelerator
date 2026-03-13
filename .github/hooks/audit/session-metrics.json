@@ -1,0 +1,27 @@
+{
+  "sessionStart": "2026-03-10T15:07:35.179658Z",
+  "sessionEnd": "2026-03-13T10:33:39.825365Z",
+  "durationSeconds": 242764.645707,
+  "totalEvents": 201,
+  "eventCounts": {
+    "UserPromptSubmit": 8,
+    "PreToolUse": 98,
+    "PostToolUse": 85,
+    "Stop": 8,
+    "SessionStart": 2
+  },
+  "promptCount": 8,
+  "totalPromptChars": 0,
+  "avgPromptChars": 0,
+  "uniqueToolsUsed": 1,
+  "totalToolCalls": 98,
+  "topTools": {
+    "unknown": {
+      "calls": 98,
+      "totalInputBytes": 0,
+      "totalOutputBytes": 0
+    }
+  },
+  "subagentsInvoked": [],
+  "contextCompactions": 0
+}
