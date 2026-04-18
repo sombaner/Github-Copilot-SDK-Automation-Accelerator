@@ -91,6 +91,13 @@ npm install
 npx tsx review-agent.ts --prompt-file ../prompts/sample-review-request.md
 ```
 
+For a runnable end-to-end sample with inline file snapshots, use:
+
+```bash
+cd usecases/review/nodejs
+npx tsx review-agent.ts --prompt-file ../prompts/sample-end-to-end-review.md --output-file ../samples/catalog-service/review-report.md
+```
+
 ## GitHub Spaces
 
 This accelerator models a GitHub Space as a prompt-declared external review context pack:

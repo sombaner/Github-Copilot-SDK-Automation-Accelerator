@@ -1,5 +1,7 @@
 # Copilot Governance Scanner Hooks
 
+> Current repository state: hook definitions are disabled by setting the hook registries in `session-logger.json` and `governance-scanner.json` to empty objects. Re-enable them by restoring the event entries in those files.
+
 Governance hooks that scan Copilot agent prompts, tool inputs, and outputs for sensitive information, threats, and policy violations. Provides configurable enforcement levels, threat categorization, and an append-only audit trail.
 
 ## Architecture
