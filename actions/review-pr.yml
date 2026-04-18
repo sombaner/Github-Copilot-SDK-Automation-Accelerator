@@ -1,0 +1,181 @@
+name: Pull Request Review Agent
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  review:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REVIEW_MODEL_ARCHITECTURE: ${{ vars.REVIEW_MODEL_ARCHITECTURE || 'gpt-5.4' }}
+      REVIEW_MODEL_CODE: ${{ vars.REVIEW_MODEL_CODE || 'claude-opus-4.6' }}
+      REVIEW_GITHUB_SPACES_JSON: ${{ vars.REVIEW_GITHUB_SPACES_JSON || '[]' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build markdown review request
+        id: prompt
+        uses: actions/github-script@v7
+        env:
+          REVIEW_GITHUB_SPACES_JSON: ${{ env.REVIEW_GITHUB_SPACES_JSON }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            function classify(filePath) {
+              const normalized = filePath.toLowerCase();
+              if (normalized.endsWith('.md') || normalized.endsWith('.mdx')) {
+                if (/(architecture|adr|rfc|topology|system|infra)/i.test(normalized)) {
+                  return 'architecture';
+                }
+                if (/(design|spec|proposal|ux|ui)/i.test(normalized)) {
+                  return 'design';
+                }
+                return 'design';
+              }
+              if (/(\/test|\/tests|\.test\.|\.spec\.|__tests__)/i.test(normalized)) {
+                return 'unit-test';
+              }
+              return 'code';
+            }
+
+            let pullRequest = context.payload.pull_request;
+            let files = [];
+            if (pullRequest) {
+              files = await github.paginate(github.rest.pulls.listFiles, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pullRequest.number,
+                per_page: 100,
+              });
+            }
+
+            const changedFiles = files.map(file => ({
+              path: file.filename,
+              kind: classify(file.filename),
+              status: file.status,
+            }));
+            const reviewTypes = Array.from(new Set(changedFiles.map(file => file.kind === 'unit-test' ? 'code' : file.kind)));
+            const spaces = JSON.parse(process.env.REVIEW_GITHUB_SPACES_JSON || '[]');
+            const promptConfig = {
+              review_types: reviewTypes,
+              pull_request: pullRequest ? {
+                number: pullRequest.number,
+                title: pullRequest.title,
+                url: pullRequest.html_url,
+                base_ref: pullRequest.base.ref,
+                head_ref: pullRequest.head.ref,
+              } : {
+                title: 'Manual review invocation',
+              },
+              github_spaces: spaces,
+              changed_files: changedFiles,
+              instructions: [
+                'Use the attached markdown file as the source of truth for review routing.',
+                'Load GitHub Space instructions and context through the GitHub MCP server before reviewing.',
+                'If both architecture/design and code are present, produce separate review streams.',
+              ],
+            };
+
+            const promptBody = [
+              '<!-- review-config',
+              JSON.stringify(promptConfig, null, 2),
+              '-->',
+              '',
+              '# Pull Request Review Request',
+              '',
+              pullRequest ? `Review pull request #${pullRequest.number}: ${pullRequest.title}` : 'Review the current workspace state.',
+              '',
+              '## Expectations',
+              '',
+              '- Review design and architecture markdown when present.',
+              '- Review code and unit tests when present.',
+              '- Use the GitHub Spaces declared in the config block for external review guidance.',
+              '',
+              '## Changed Files',
+              '',
+              ...changedFiles.map(file => `- ${file.path} (${file.kind})`),
+            ].join('\n');
+
+            const promptDir = path.join(process.env.GITHUB_WORKSPACE, '.copilot');
+            fs.mkdirSync(promptDir, { recursive: true });
+            const promptPath = path.join(promptDir, 'review-request.md');
+            fs.writeFileSync(promptPath, promptBody, 'utf8');
+            core.setOutput('prompt_file', promptPath);
+            core.setOutput('report_file', path.join(promptDir, 'review-report.md'));
+
+      - name: Install review agent dependencies
+        working-directory: usecases/review/nodejs
+        run: npm install
+
+      - name: Run review agent
+        working-directory: usecases/review/nodejs
+        run: |
+          npx tsx review-agent.ts \
+            --prompt-file "${{ steps.prompt.outputs.prompt_file }}" \
+            --output-file "${{ steps.prompt.outputs.report_file }}"
+
+      - name: Upload prompt and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-agent-artifacts
+          path: |
+            ${{ steps.prompt.outputs.prompt_file }}
+            ${{ steps.prompt.outputs.report_file }}
+
+      - name: Publish pull request comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          REPORT_FILE: ${{ steps.prompt.outputs.report_file }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- review-agent-report -->';
+            const report = fs.readFileSync(process.env.REPORT_FILE, 'utf8');
+            const body = `${marker}\n${report}`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            const existing = comments.find(comment => comment.body && comment.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });

@@ -1,19 +1,19 @@
 # Use Cases
 
-This directory contains use-case-specific Copilot SDK agents organized by domain and language.
+This directory contains use-case-specific Copilot SDK agents organized by domain. Some use cases ship in multiple languages, while others are intentionally runtime-specific.
 
 ## Available Use Cases
 
 | Use Case | Description | Primary Language |
 |----------|-------------|-----------------|
 | [monitoring/](monitoring/) | AKS cluster health monitoring, diagnostics, GitHub issue creation | Node.js |
-| [code-review/](code-review/) | AI-powered code review with custom analysis | Node.js |
+| [review/](review/) | Generic architecture, design, and code review with GitHub Spaces and model routing | Node.js |
 | [security-analysis/](security-analysis/) | Automated security vulnerability scanning | Node.js |
 | [ppt-generator/](ppt-generator/) | AI-powered PowerPoint presentation generator with custom tools & agent skills | Node.js, Python |
 
 ## Structure
 
-Each use case follows the same multi-language structure:
+Typical structure:
 
 ```
 <usecase>/
@@ -44,7 +44,7 @@ Each use case follows the same multi-language structure:
 ```bash
 # From the repo root
 ./automation/copilot-sdk-runner.sh --usecase monitoring --lang nodejs
-./automation/copilot-sdk-runner.sh --usecase code-review --lang python
+./automation/copilot-sdk-runner.sh --usecase review --lang nodejs --prompt-file usecases/review/prompts/sample-review-request.md
 ```
 
 ### Directly
@@ -53,14 +53,8 @@ Each use case follows the same multi-language structure:
 # Node.js
 cd usecases/monitoring/nodejs && npm install && npx tsx aks-monitor-agent.ts
 
-# Python
-cd usecases/monitoring/python && pip install -r requirements.txt && python aks_monitor_agent.py
-
-# Go
-cd usecases/monitoring/go && go run .
-
-# .NET
-cd usecases/monitoring/dotnet && dotnet run
+# Review agent
+cd usecases/review/nodejs && npm install && npx tsx review-agent.ts --prompt-file ../prompts/sample-review-request.md
 ```
 
 ## Adding a New Use Case

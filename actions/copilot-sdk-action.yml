@@ -5,7 +5,7 @@ on:
   workflow_call:
     inputs:
       usecase:
-        description: 'Use case to run (e.g., monitoring, code-review, security-analysis)'
+        description: 'Use case to run (e.g., monitoring, review, security-analysis)'
         required: true
         type: string
       language:
@@ -15,6 +15,16 @@ on:
         default: 'nodejs'
       prompt:
         description: 'Optional prompt to pass to the agent'
+        required: false
+        type: string
+        default: ''
+      prompt_file:
+        description: 'Optional markdown prompt file path for agents that accept --prompt-file'
+        required: false
+        type: string
+        default: ''
+      output_file:
+        description: 'Optional markdown output file path for agents that accept --output-file'
         required: false
         type: string
         default: ''
@@ -73,13 +83,26 @@ jobs:
       - name: Install Node.js dependencies
         if: inputs.language == 'nodejs'
         working-directory: usecases/${{ inputs.usecase }}/nodejs
-        run: npm ci
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
       - name: Run Node.js agent
         if: inputs.language == 'nodejs'
         working-directory: usecases/${{ inputs.usecase }}/nodejs
+        shell: bash
         run: |
-          if [ -n "${{ inputs.prompt }}" ]; then
+          if [ -n "${{ inputs.prompt_file }}" ]; then
+            if [ -n "${{ inputs.output_file }}" ]; then
+              npx tsx *.ts --prompt-file "${{ inputs.prompt_file }}" --output-file "${{ inputs.output_file }}"
+            else
+              npx tsx *.ts --prompt-file "${{ inputs.prompt_file }}"
+            fi
+          elif [ -n "${{ inputs.prompt }}" ]; then
             echo "${{ inputs.prompt }}" | npx tsx *.ts
           else
             npx tsx *.ts
@@ -102,7 +125,17 @@ jobs:
       - name: Run Python agent
         if: inputs.language == 'python'
         working-directory: usecases/${{ inputs.usecase }}/python
-        run: python *.py
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.prompt_file }}" ]; then
+            if [ -n "${{ inputs.output_file }}" ]; then
+              python *.py --prompt-file "${{ inputs.prompt_file }}" --output-file "${{ inputs.output_file }}"
+            else
+              python *.py --prompt-file "${{ inputs.prompt_file }}"
+            fi
+          else
+            python *.py
+          fi
 
       # --- Go Setup ---
       - name: Setup Go
@@ -114,7 +147,17 @@ jobs:
       - name: Run Go agent
         if: inputs.language == 'go'
         working-directory: usecases/${{ inputs.usecase }}/go
-        run: go run .
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.prompt_file }}" ]; then
+            if [ -n "${{ inputs.output_file }}" ]; then
+              go run . --prompt-file "${{ inputs.prompt_file }}" --output-file "${{ inputs.output_file }}"
+            else
+              go run . --prompt-file "${{ inputs.prompt_file }}"
+            fi
+          else
+            go run .
+          fi
 
       # --- .NET Setup ---
       - name: Setup .NET
@@ -126,4 +169,14 @@ jobs:
       - name: Run .NET agent
         if: inputs.language == 'dotnet'
         working-directory: usecases/${{ inputs.usecase }}/dotnet
-        run: dotnet run
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.prompt_file }}" ]; then
+            if [ -n "${{ inputs.output_file }}" ]; then
+              dotnet run -- --prompt-file "${{ inputs.prompt_file }}" --output-file "${{ inputs.output_file }}"
+            else
+              dotnet run -- --prompt-file "${{ inputs.prompt_file }}"
+            fi
+          else
+            dotnet run
+          fi

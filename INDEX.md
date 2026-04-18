@@ -23,7 +23,7 @@ Quick reference to all documentation and resources in this repository.
 | Use Case | Path | Description |
 |----------|------|-------------|
 | AKS Monitoring | [usecases/monitoring/](usecases/monitoring/) | AKS cluster health monitoring & diagnostics |
-| Code Review | [usecases/code-review/](usecases/code-review/) | AI-powered code review agent |
+| Review | [usecases/review/](usecases/review/) | Architecture, design, and code review agent |
 | Security Analysis | [usecases/security-analysis/](usecases/security-analysis/) | Automated security scanning agent |
 
 ## 🧪 Examples

@@ -25,6 +25,8 @@ NC='\033[0m' # No Color
 USECASE=""
 LANGUAGE="nodejs"
 CONFIG_FILE=""
+PROMPT_FILE=""
+OUTPUT_FILE=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 USECASES_DIR="$ROOT_DIR/usecases"
@@ -41,8 +43,10 @@ USAGE:
     ./copilot-sdk-runner.sh [OPTIONS]
 
 OPTIONS:
-    -u, --usecase <name>       Use case to run (monitoring, code-review, security-analysis)
+    -u, --usecase <name>       Use case to run (monitoring, review, security-analysis)
     -l, --lang <language>      Language runtime: nodejs (default), python, go, dotnet
+    -p, --prompt-file <path>   Optional markdown prompt file for agents that accept it
+    -o, --output-file <path>   Optional markdown output path for agents that accept it
     -c, --config <file>        Path to custom properties file
     -e, --example <name>       Run an example (hello-world, weather-assistant)
         --list                 List available use cases and examples
@@ -54,8 +58,8 @@ EXAMPLES:
     # Run AKS monitoring agent (Node.js)
     ./copilot-sdk-runner.sh --usecase monitoring --lang nodejs
 
-    # Run code review agent (Python)
-    ./copilot-sdk-runner.sh --usecase code-review --lang python
+    # Run review agent with a markdown prompt file (Python)
+    ./copilot-sdk-runner.sh --usecase review --lang python --prompt-file usecases/review/prompts/sample-review-request.md
 
     # Run hello-world example
     ./copilot-sdk-runner.sh --example hello-world
@@ -307,6 +311,14 @@ run_usecase() {
     echo -e "${MAGENTA}=========================================${NC}"
     echo ""
 
+    local prompt_args=()
+    if [[ -n "$PROMPT_FILE" ]]; then
+        prompt_args+=("--prompt-file" "$PROMPT_FILE")
+    fi
+    if [[ -n "$OUTPUT_FILE" ]]; then
+        prompt_args+=("--output-file" "$OUTPUT_FILE")
+    fi
+
     case "$lang" in
         nodejs)
             cd "$agent_dir"
@@ -323,7 +335,7 @@ run_usecase() {
                 echo -e "${RED}Error: No .ts file found in $agent_dir${NC}"
                 exit 1
             fi
-            npx tsx "$main_file"
+            npx tsx "$main_file" "${prompt_args[@]}"
             ;;
         python)
             cd "$agent_dir"
@@ -337,19 +349,19 @@ run_usecase() {
                 echo -e "${RED}Error: No .py file found in $agent_dir${NC}"
                 exit 1
             fi
-            python3 "$py_file"
+            python3 "$py_file" "${prompt_args[@]}"
             ;;
         go)
             cd "$agent_dir"
             echo -e "${GREEN}Starting agent...${NC}"
             echo ""
-            go run .
+            go run . "${prompt_args[@]}"
             ;;
         dotnet)
             cd "$agent_dir"
             echo -e "${GREEN}Starting agent...${NC}"
             echo ""
-            dotnet run
+            dotnet run -- "${prompt_args[@]}"
             ;;
         *)
             echo -e "${RED}Error: Unsupported language '$lang'.${NC}"
@@ -405,6 +417,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         -l|--lang|--language)
             LANGUAGE="$2"
+            shift 2
+            ;;
+        -p|--prompt-file)
+            PROMPT_FILE="$2"
+            shift 2
+            ;;
+        -o|--output-file)
+            OUTPUT_FILE="$2"
             shift 2
             ;;
         -e|--example)

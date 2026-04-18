@@ -8,6 +8,7 @@ Reusable GitHub Actions workflows for running Copilot SDK agents in CI/CD pipeli
 |----------|-------------|
 | [copilot-sdk-action.yml](copilot-sdk-action.yml) | General-purpose reusable workflow for any use case |
 | [aks-monitor.yml](aks-monitor.yml) | AKS cluster monitoring workflow |
+| [review-pr.yml](review-pr.yml) | Pull-request driven review workflow using the generic review agent |
 | [council-query.yml](council-query.yml) | Use a LLM council to act uppon your codebase |
 | [feature-requirement.yml](feature-requirement-analysis.yml) | Analyse feature completeness using a LLM Council |
 | [gatekeeper.yml](gatekeeper.yml) | Analyse the PR for techncial readiness, feature drift, production readiness, unit test coverage all using a LLM COuncil |
@@ -152,11 +153,60 @@ jobs:
   run:
     uses: ./.github/workflows/copilot-sdk-action.yml
     with:
-      usecase: code-review
+      usecase: review
       language: nodejs
       prompt: "Review the latest changes for security issues"
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### Run the Review Agent With a Markdown Prompt File
+
+```yaml
+name: Review Agent
+on: [workflow_dispatch]
+
+jobs:
+  run:
+    uses: ./.github/workflows/copilot-sdk-action.yml
+    with:
+      usecase: review
+      language: nodejs
+      prompt_file: .copilot/review-request.md
+      output_file: .copilot/review-report.md
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+## Pull Request Review Workflow
+
+The [review-pr.yml](review-pr.yml) workflow builds a markdown prompt file from pull request metadata and changed files, invokes the generic review agent, and publishes the result back to the pull request as a comment.
+
+Configure external GitHub Spaces with a repository variable named `REVIEW_GITHUB_SPACES_JSON`.
+
+Example value:
+
+```json
+[
+  {
+    "name": "platform-architecture",
+    "owner": "example",
+    "repo": "review-guidance",
+    "ref": "main",
+    "review_types": ["architecture", "design"],
+    "instructions": ["spaces/architecture/instructions.md"],
+    "context": ["spaces/shared/principles.md"]
+  },
+  {
+    "name": "engineering-code-review",
+    "owner": "example",
+    "repo": "review-guidance",
+    "ref": "main",
+    "review_types": ["code"],
+    "instructions": ["spaces/code/instructions.md"],
+    "context": ["spaces/code/testing.md", "spaces/code/security.md"]
+  }
+]
 ```
 
 ## Prerequisites for Council-based Workflows

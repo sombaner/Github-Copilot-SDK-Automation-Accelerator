@@ -40,7 +40,7 @@ npx tsx aks-monitor-agent.ts
 | Goal | Command |
 |------|---------|
 | **AKS Monitoring** | `./automation/copilot-sdk-runner.sh --usecase monitoring --lang nodejs` |
-| **Code Review Agent** | `./automation/copilot-sdk-runner.sh --usecase code-review --lang nodejs` |
+| **Review Agent** | `./automation/copilot-sdk-runner.sh --usecase review --lang nodejs --prompt-file usecases/review/prompts/sample-review-request.md` |
 | **Security Analysis** | `./automation/copilot-sdk-runner.sh --usecase security-analysis --lang python` |
 | **List Use Cases** | `./automation/copilot-sdk-runner.sh --list` |
 | **Run Any Agent** | `./automation/copilot-sdk-runner.sh --usecase <name> --lang <language>` |
@@ -108,7 +108,7 @@ copilot-sdk-accelerator/
 │   │   ├── python/
 │   │   ├── go/
 │   │   └── dotnet/
-│   ├── code-review/                   # AI-powered code review
+│   ├── review/                        # Architecture, design, and code review
 │   │   ├── nodejs/
 │   │   ├── python/
 │   │   ├── go/
@@ -231,7 +231,7 @@ See [circleci/README.md](circleci/README.md) for full documentation.
 | Use Case | Description | Languages |
 |----------|-------------|-----------|
 | **[Monitoring](usecases/monitoring/)** | AKS cluster health monitoring, diagnostics, auto-issue creation | Node.js, Python, Go, .NET |
-| **[Code Review](usecases/code-review/)** | AI-powered code review with Copilot SDK | Node.js, Python, Go, .NET |
+| **[Review](usecases/review/)** | Architecture, design, and code review with GitHub Spaces and model routing | Node.js |
 | **[Security Analysis](usecases/security-analysis/)** | Automated security vulnerability scanning | Node.js, Python, Go, .NET |
 
 ---

@@ -1,0 +1,17 @@
+{
+  "name": "copilot-sdk-review-nodejs",
+  "version": "1.0.0",
+  "description": "Generic review agent with GitHub Spaces routing",
+  "scripts": {
+    "start": "tsx review-agent.ts"
+  },
+  "type": "module",
+  "dependencies": {
+    "@github/copilot-sdk": "^0.2.2",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.3"
+  }
+}
