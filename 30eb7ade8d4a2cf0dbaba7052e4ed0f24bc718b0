@@ -1,0 +1,28 @@
+.gitignore
+  h_5257263ddcda8f 4,18-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "30eb7ade8d4a2cf0dbaba7052e4ed0f24bc718b0",
+  "prompts": {
+    "f3955af3c3216961": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "9dd17b99-f16f-48c2-9c78-76ba76bbbe74",
+        "model": "copilot/gpt-5.4"
+      },
+      "human_author": "Somnath Banerjee",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 467,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_5257263ddcda8f": {
+      "author": "Somnath Banerjee"
+    }
+  }
+}
