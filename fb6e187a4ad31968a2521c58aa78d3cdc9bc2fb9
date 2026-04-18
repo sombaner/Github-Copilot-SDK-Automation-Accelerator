@@ -1,0 +1,50 @@
+actions/cast-feature-impact.yml
+  f3955af3c3216961 1-375
+actions/cast-imaging-analyzer.yml
+  f3955af3c3216961 1-22
+actions/council-query.yml
+  f3955af3c3216961 1-494
+actions/feature-requirement-analysis.yml
+  f3955af3c3216961 1-237
+actions/scripts/council.py
+  f3955af3c3216961 1-374
+actions/scripts/fetch-council-results.py
+  f3955af3c3216961 1-391
+actions/gatekeeper.yml
+  f3955af3c3216961 1-539
+actions/scripts/council_ci_runner.py
+  f3955af3c3216961 1-146
+actions/scripts/__init__.py
+  f3955af3c3216961 1
+actions/scripts/config.py
+  f3955af3c3216961 1-22
+actions/README.md
+  h_5257263ddcda8f 12-15,39-145,212-231,247-248
+actions/scripts/copilot_client.py
+  f3955af3c3216961 1-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "fb6e187a4ad31968a2521c58aa78d3cdc9bc2fb9",
+  "prompts": {
+    "f3955af3c3216961": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "9dd17b99-f16f-48c2-9c78-76ba76bbbe74",
+        "model": "copilot/gpt-5.4"
+      },
+      "human_author": "Somnath Banerjee",
+      "messages": [],
+      "total_additions": 2986,
+      "total_deletions": 0,
+      "accepted_lines": 3095,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_5257263ddcda8f": {
+      "author": "Somnath Banerjee"
+    }
+  }
+}
