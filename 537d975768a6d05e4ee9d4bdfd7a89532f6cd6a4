@@ -1,0 +1,68 @@
+git_out.txt
+  f3955af3c3216961 1-196
+.github/copilot-instructions.md
+  h_5257263ddcda8f 1-10
+usecases/review/review-agent-sequence-diagram.md
+  h_5257263ddcda8f 1-71
+usecases/review/prompts/sample-end-to-end-review.md
+  h_5257263ddcda8f 1-175
+usecases/review/samples/README.md
+  h_5257263ddcda8f 1-32
+usecases/review/samples/catalog-service/review-report.md
+  98a2f48b43d3ea03 16,42,51,89,91,93
+  f3955af3c3216961 1-5,9-12,14,18,21,24-29,33-35,37-39,41,45,47,101
+.github/hooks/session-logger.json
+  h_5257263ddcda8f 2
+usecases/review/README.md
+  h_5257263ddcda8f 94-100
+usecases/review/nodejs/review-agent.ts
+  h_5257263ddcda8f 1-2,4,6,59-66,70-165,167-182,228,230-234,251-257,260-276,278,281-284,290-292,295-298,304-305,309-329,336-340,360,366-374,387,392,398-406,411,417-424,428-437,442,449-462,464-468,483-488,499-510,526-529,532,536-541,544,558-567,585-589,596-599,614-615,619,622,626-629,643-662,665,675,679-684,688-694,696,706-710,715-719,721-725,729,731,738-739,755-760,762-777,780-782,784-787,790-798,801-812,814-816,819-822,826-828,830-832
+.github/hooks/README.md
+  h_5257263ddcda8f 3-4
+usecases/review/samples/catalog-service/src/catalog/search.ts
+  h_5257263ddcda8f 1-42
+usecases/review/samples/catalog-service/tests/catalog/search.test.ts
+  h_5257263ddcda8f 1-11
+usecases/review/samples/catalog-service/docs/architecture/catalog-search-design.md
+  h_5257263ddcda8f 1-36
+.github/hooks/governance-scanner.json
+  h_5257263ddcda8f 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "537d975768a6d05e4ee9d4bdfd7a89532f6cd6a4",
+  "prompts": {
+    "98a2f48b43d3ea03": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "ea3c4323-1b3e-4d4e-be0c-040bc2977d88",
+        "model": "copilot/gpt-5.4"
+      },
+      "human_author": "Somnath Banerjee",
+      "messages": [],
+      "total_additions": 131,
+      "total_deletions": 119,
+      "accepted_lines": 6,
+      "overriden_lines": 24
+    },
+    "f3955af3c3216961": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "9dd17b99-f16f-48c2-9c78-76ba76bbbe74",
+        "model": "copilot/gpt-5.4"
+      },
+      "human_author": "Somnath Banerjee",
+      "messages": [],
+      "total_additions": 160,
+      "total_deletions": 77,
+      "accepted_lines": 492,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_5257263ddcda8f": {
+      "author": "Somnath Banerjee"
+    }
+  }
+}
